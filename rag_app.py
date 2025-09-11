@@ -7,7 +7,9 @@ import numpy as np
 import faiss
 from tqdm import tqdm
 from openai import OpenAI
-from flask import Flask, request, redirect, url_for, render_template, flash
+from flask import Flask, request, redirect, url_for, render_template, flash, session
+from collections import defaultdict
+from uuid import uuid4
 
 # ---------------- Config ----------------
 EMBED_MODEL   = "text-embedding-3-small"
@@ -44,7 +46,18 @@ class Chunk:
 index = None
 chunks: List[Chunk] = []
 ready = False
-chat_history: List[dict] = []  # {role, text, sources}
+
+# ---------------- Per-session chat histories ----------------
+# Each visitor gets a session cookie 'sid'; we store their chat in-memory under that key.
+histories = defaultdict(list)  # sid -> List[dict], each dict like {"role": "...", "text": "...", "sources": [...]}
+
+@app.before_request
+def ensure_session():
+    if "sid" not in session:
+        session["sid"] = str(uuid4())
+
+def get_history() -> List[dict]:
+    return histories[session["sid"]]
 
 # ---------------- RAG helpers ----------------
 def read_pdfs_to_chunks(docs_dir: str) -> List[Chunk]:
@@ -156,6 +169,7 @@ def answer_question(query: str, contexts: List[Tuple[float, Chunk]]):
 def home():
     docs_count = sum(1 for f in os.listdir(DOCS_DIR) if f.lower().endswith(".pdf"))
     status_text = "Ready" if ready else "Loading…"
+    chat_history = get_history()
     return render_template(
         "index.html",
         status_text=status_text,
@@ -166,6 +180,7 @@ def home():
 
 @app.route("/upload", methods=["POST"])
 def upload():
+    chat_history = get_history()
     files = request.files.getlist("files")
     saved = []
     for f in files:
@@ -173,6 +188,7 @@ def upload():
             path = os.path.join(DOCS_DIR, f.filename)
             f.save(path)
             saved.append(f.filename)
+    # clear old FAISS files so we rebuild fresh
     for p in ["faiss.index", "meta.pkl"]:
         fp = os.path.join(INDEX_DIR, p)
         if os.path.exists(fp):
@@ -182,11 +198,11 @@ def upload():
         chat_history.append({"role":"system","text":f"Uploaded: {', '.join(saved)}. Index rebuilt with {len(chunks)} chunks.","sources":[]})
     else:
         flash("No PDF files uploaded.","warn")
-    # keep chat open after redirect
     return redirect(url_for("home") + "#chat")
 
 @app.route("/ask", methods=["POST"])
 def ask():
+    chat_history = get_history()
     q = (request.form.get("question") or "").strip()
     if not q:
         flash("Please enter a question.","warn")
@@ -200,10 +216,17 @@ def ask():
         return redirect(url_for("home") + "#chat")
     ans_text, sources = answer_question(q, hits)
     chat_history.append({"role":"bot","text":ans_text,"sources":sources})
-    # keep chat open after redirect
+    return redirect(url_for("home") + "#chat")
+
+# Reset only the current user's chat
+@app.route("/reset", methods=["POST"])
+def reset():
+    sid = session.get("sid")
+    histories.pop(sid, None)
+    session.clear()  # force a new sid
     return redirect(url_for("home") + "#chat")
 
 if __name__ == "__main__":
     print("Starting server and (re)building index if needed…")
     rebuild_index()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True) 
