@@ -1,0 +1,12 @@
+# Ignore everything first
+*
+
+# Allow only necessary files
+!.gitignore
+!rag_app.py
+!requirements.txt
+!wsgi.py
+!static/
+!static/**
+!templates/
+!templates/**

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Chat (No JS)</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <!-- Floating icon opens #chat (persists across reloads) -->
+    <a href="#chat" id="chatbot-icon" aria-label="Open PDF Chat">💬</a>
+
+    <!-- Chat window: shown when this element is the :target -->
+    <div id="chat" class="chat-wrapper">
+      <div id="chatbot-container" aria-live="polite">
+        <div id="chatbot-header" class="{{ 'header--busy' if is_busy else '' }}">
+          <span id="chatbot-title">PDF Chat</span>
+          <span id="status-badge" title="Index status">{{ status_text }}</span>
+          <!-- Close goes to empty fragment, which un-targets the chat -->
+          <a href="#" id="close-btn" aria-label="Close">×</a>
+        </div>
+
+        <div id="chatbot-body">
+          <div id="chatbot-messages" aria-relevant="additions">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, msg in messages %}
+                  <div class="message bot">{{ msg | trim }}</div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            {% if chat_history|length == 0 %}
+              <div class="message bot">
+                Hi! Upload some PDFs, then ask me anything about them.
+              </div>
+            {% endif %}
+
+            {% for m in chat_history %}
+              <div class="message {{ 'user' if m.role == 'user' else 'bot' }}">
+                {{ m.text | trim }}
+                {% if m.sources and m.sources|length %}
+                  <ul class="sources">
+                    {% for s in m.sources %}<li>{{ s }}</li>{% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div id="chatbot-input-container">
+          <form action="{{ url_for('ask') }}" method="POST" class="row">
+            <input
+              type="text"
+              name="question"
+              id="chatbot-input"
+              placeholder="Ask a question about your PDFs…"
+              aria-label="Message input"
+              required
+            />
+            <button type="submit" id="send-btn" aria-label="Send message">Send</button>
+          </form>
+
+          <form action="{{ url_for('upload') }}" method="POST" enctype="multipart/form-data" class="row">
+            <input
+              type="file"
+              name="files"
+              id="upload-input"
+              accept=".pdf,application/pdf"
+              multiple
+              aria-label="Upload PDF files"
+            />
+            <button type="submit" class="btn-secondary">Upload</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
