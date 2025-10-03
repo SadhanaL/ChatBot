@@ -21,7 +21,7 @@ TOP_K         = 5
 # ---------------- Setup -----------------
 load_dotenv()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.getenv("APP_DATA_DIR", "/home/data")
 DOCS_DIR  = os.path.join(BASE_DIR, "docs")
 INDEX_DIR = os.path.join(BASE_DIR, "index")
 os.makedirs(DOCS_DIR, exist_ok=True)
